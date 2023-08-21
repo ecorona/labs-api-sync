@@ -2,8 +2,8 @@
 /dist
 /node_modules
 /deploy
-/cliente/.angular
-/cliente/node_modules
+/client/.angular
+/client/node_modules
 # Logs
 logs
 *.log
