@@ -21,6 +21,7 @@ import { GatewayModule } from './gateway/gateway.module';
     ConfiguracionModule,
     GatewayModule,
   ],
+  providers: [SocketLinkService],
 })
 export class AppModule implements OnModuleInit {
   private readonly CARPETA_ESTUDIOS = '/home/developer/pdf'; //FIXME: configurable

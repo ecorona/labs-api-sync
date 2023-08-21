@@ -1,10 +1,15 @@
 import { io } from 'socket.io-client';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { Injectable } from '@nestjs/common';
+import { ClientData } from './client-data.dto';
+import { EventsGateway } from 'src/gateway/events/events.gateway';
 
 @Injectable()
 export class SocketLinkService {
   private apiServer = 'https://api-xquenda-testing.xst.mx';
+
+  private data = new BehaviorSubject<ClientData>(null);
+
   // eventos personalizados
   public events = new Subject<{ event: string; data?: any }>();
   private _conectado: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(
@@ -13,6 +18,10 @@ export class SocketLinkService {
   private _conectando: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(
     true,
   );
+
+  get data$(): Observable<ClientData> {
+    return this.data.asObservable();
+  }
 
   get conectado$(): Observable<boolean> {
     return this._conectado.asObservable();
@@ -47,7 +56,7 @@ export class SocketLinkService {
 
   private token = '';
 
-  constructor() {
+  constructor(private readonly eventsGateway: EventsGateway) {
     console.log('wsService > loaded');
   }
 
@@ -107,6 +116,14 @@ export class SocketLinkService {
     if (this.token) {
       this.sendRequest('monitor.online', null, (response) => {
         console.log('wsService > joinChannels > response:', response);
+        const currentData: ClientData = { ...response };
+        this.data.next(currentData);
+        //almacenar en el gateway quien soy
+        this.eventsGateway.clientData = currentData;
+        //emitir por el gateway quien soy
+        this.eventsGateway.server
+          .to('monitor-local')
+          .emit('monitor.online', currentData);
       });
     }
     return false;

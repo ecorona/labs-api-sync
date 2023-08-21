@@ -5,10 +5,12 @@ import {
   OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { Socket } from 'socket.io-client';
+import { Server, Socket } from 'socket.io';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 import { ConfigValues } from 'src/configuracion/dto/config.values';
+import { ClientData } from 'src/socket-link/client-data.dto';
 
 @WebSocketGateway({
   transports: ['polling', 'websocket'],
@@ -16,8 +18,12 @@ import { ConfigValues } from 'src/configuracion/dto/config.values';
 export class EventsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
+  clientData: ClientData = null;
   constructor(private readonly configuracionService: ConfiguracionService) {}
   private logger: Logger = new Logger(EventsGateway.name);
+
+  @WebSocketServer() public server: Server;
+
   /**
    * Después de la inicialización del gateway
    */
@@ -31,7 +37,11 @@ export class EventsGateway
    * @param { Socket } socket
    */
   async handleConnection(socket: Socket): Promise<any> {
+    //suscribirlo al canal monitor-local
+    socket.join('monitor-local');
     this.logger.verbose(`Client connected: ${socket.id}`);
+    //mandarle la informacion de conexion actual
+    socket.emit('monitor.online', this.clientData);
   }
 
   /**

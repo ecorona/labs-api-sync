@@ -2,12 +2,16 @@ import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import * as chokidar from 'chokidar';
 import { readFileSync, unlinkSync } from 'fs';
+import { EventsGateway } from 'src/gateway/events/events.gateway';
 @Injectable()
 export class EstudiosPdfService {
   watcher: chokidar.FSWatcher;
   private apiServer = 'https://api-xquenda-testing.xst.mx';
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   /**
    * Monitorea una carpeta en busca de archivos PDF nuevos o modificados
@@ -68,9 +72,17 @@ export class EstudiosPdfService {
       .subscribe({
         next: () => {
           console.log('Archivo enviado:', path);
+          //emitir por EventsGateway que el archivo se ha enviado
+          this.eventsGateway.server
+            .to('monitor-local')
+            .emit('archivo-enviado', path);
           //borrar el archivo enviado.
           unlinkSync(path);
           console.log('Archivo borrado: ' + path);
+          //emitir por EventsGateway que el archivo se ha borrado
+          this.eventsGateway.server
+            .to('monitor-local')
+            .emit('archivo-borrado', path);
         },
         error: (error) => {
           if (error.response) {
