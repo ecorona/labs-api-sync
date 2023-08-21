@@ -1,18 +1,13 @@
+import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import * as chokidar from 'chokidar';
-import { Subject } from 'rxjs';
+import { readFileSync, unlinkSync } from 'fs';
 @Injectable()
 export class EstudiosPdfService {
-  archivoCambiadoSubject: Subject<string>;
-
   watcher: chokidar.FSWatcher;
-  //private readonly CARPETA_ESTUDIOS = 'C:\\Users\\jose\\Desktop\\estudios';
-  private readonly CARPETA_ESTUDIOS = '/home/developer/pdf'; //FIXME: configurable
+  private apiServer = 'https://api-xquenda-testing.xst.mx';
 
-  constructor() {
-    this.archivoCambiadoSubject = new Subject<string>();
-    this.monitorearCarpeta(this.CARPETA_ESTUDIOS);
-  }
+  constructor(private readonly httpService: HttpService) {}
 
   /**
    * Monitorea una carpeta en busca de archivos PDF nuevos o modificados
@@ -31,8 +26,14 @@ export class EstudiosPdfService {
       });
 
       // Add event listeners.
-      this.watcher.on('add', this.onAdd);
-      this.watcher.on('change', this.onChange);
+      this.watcher.on('add', (path) => {
+        console.log('Archivo agregado: ' + path);
+        this.enviarArchivo(path);
+      });
+      // this.watcher.on('change', (path) => {
+      //   console.log('Archivo modificado: ' + path);
+      //   this.enviarArchivo(path);
+      // });
     } else {
       console.log('Ya se está monitoreando una carpeta');
       console.log('Carpeta actual: ' + this.watcher.getWatched());
@@ -46,13 +47,46 @@ export class EstudiosPdfService {
     }
   }
 
-  onChange(path: string) {
-    console.log('Archivo modificado: ' + path);
-    this.archivoCambiadoSubject?.next(path);
-  }
+  enviarArchivo(path: string) {
+    //si ya tenemos token, el socket está conectado
+    const formData = new FormData();
+    //enviar archivo al server, como un post
 
-  onAdd(path: string) {
-    console.log('Archivo agregado: ' + path);
-    this.archivoCambiadoSubject?.next(path);
+    //leer el contenido del archivo como blob
+    const blob = new Blob([readFileSync(path)], {
+      type: 'application/pdf',
+    });
+
+    formData.append('archivo', blob, path);
+
+    this.httpService
+      .post(this.apiServer + '/api/v1/pxlab/pdf', formData, {
+        headers: {
+          'api-key': 'd8d9941c-f4b9-47e8-b17b-4920dd68ea91',
+        },
+      })
+      .subscribe({
+        next: () => {
+          console.log('Archivo enviado:', path);
+          //borrar el archivo enviado.
+          unlinkSync(path);
+          console.log('Archivo borrado: ' + path);
+        },
+        error: (error) => {
+          if (error.response) {
+            // get response with a status code not in range 2xx
+            console.log(error.response.data);
+            console.log(error.response.status);
+            console.log(error.response.headers);
+          } else if (error.request) {
+            // no response
+            console.log(error.request);
+          } else {
+            // Something wrong in setting up the request
+            console.log('Error', error.message);
+          }
+          console.log(error.config);
+        },
+      });
   }
 }
