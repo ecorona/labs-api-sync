@@ -1,0 +1,6 @@
+{
+  "port": 3000,
+  "dbLocation": "archivo.sqlite3",
+  "folderResultados": "C:\\Xsystems\\resultados\\",
+  "serverPlataforma": "https://plataforma.laboratoriosanfrancisco.mx/"
+}
