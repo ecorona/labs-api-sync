@@ -6,6 +6,8 @@ import { SocketLinkModule } from './socket-link/socket-link.module';
 import { EstudiosPdfService } from './estudios-pdf/estudios-pdf.service';
 import { SocketLinkService } from './socket-link/socket-link.service';
 import { HttpModule } from '@nestjs/axios';
+import { ConfiguracionModule } from './configuracion/configuracion.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { HttpModule } from '@nestjs/axios';
     HttpModule,
     EstudiosPdfModule,
     SocketLinkModule,
+    ConfiguracionModule,
+    GatewayModule,
   ],
 })
 export class AppModule implements OnModuleInit {
