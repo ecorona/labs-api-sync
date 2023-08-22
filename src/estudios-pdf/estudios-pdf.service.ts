@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as chokidar from 'chokidar';
 import { readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { EventsGateway } from 'src/gateway/events/events.gateway';
@@ -8,9 +8,10 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { createHash } from 'crypto';
 import { ArchivoEntity } from 'src/archivos/archivo.entity';
+import { SysLogger } from 'src/syslog/logger.service';
 @Injectable()
 export class EstudiosPdfService {
-  logger: Logger = new Logger(EstudiosPdfService.name);
+  logger = new SysLogger(EstudiosPdfService.name);
   watcher: chokidar.FSWatcher;
   private apiServer = 'http://192.168.0.18:3000'; //FIXME: configurable
   private readonly CARPETA_ESTUDIOS = '/home/developer/pdf'; //FIXME: configurable

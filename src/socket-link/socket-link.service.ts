@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ClientData } from './client-data.dto';
 import { EventsGateway } from 'src/gateway/events/events.gateway';
 import { DataSource } from 'typeorm';
@@ -8,10 +8,11 @@ import { SyslogEntity } from 'src/syslog/syslog.entity';
 import { TareaData } from './tarea-data.dto';
 import { PxlabService } from 'src/pxlab/pxlab.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SysLogger } from 'src/syslog/logger.service';
 
 @Injectable()
 export class SocketLinkService {
-  private logger: Logger = new Logger(SocketLinkService.name);
+  private logger = new SysLogger(SocketLinkService.name);
   //FIXME: obtener de configuracion json, este es el api de la plataforma
   //vamos a ser clientes para recibir eventos de la plataforma
   private apiServer = 'http://192.168.0.18:3000';

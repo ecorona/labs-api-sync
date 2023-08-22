@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 import { ConfigValues } from 'src/configuracion/dto/config.values';
 import { ClientData } from 'src/socket-link/client-data.dto';
+import { SysLogger } from 'src/syslog/logger.service';
 
 @WebSocketGateway({
   transports: ['polling', 'websocket'],
@@ -20,7 +21,7 @@ export class EventsGateway
 {
   clientData: ClientData = null;
   constructor(private readonly configuracionService: ConfiguracionService) {}
-  private logger: Logger = new Logger(EventsGateway.name);
+  private logger = new SysLogger(EventsGateway.name);
 
   @WebSocketServer() public server: Server;
 
@@ -61,5 +62,11 @@ export class EventsGateway
   setConfig(client: Socket, payload: any): Promise<ConfigValues> {
     console.log('payload', payload);
     return this.configuracionService.getConfig();
+  }
+
+  @OnEvent('syslog')
+  syslog(payload: any) {
+    this.logger.log('syslog', payload);
+    this.server.to('monitor-local').emit('syslog', payload);
   }
 }

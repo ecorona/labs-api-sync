@@ -1,4 +1,4 @@
-import { Logger, Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { EstudiosPdfModule } from './estudios-pdf/estudios-pdf.module';
 import { SocketLinkModule } from './socket-link/socket-link.module';
 import { SocketLinkService } from './socket-link/socket-link.service';
@@ -12,6 +12,7 @@ import { PxlabModule } from './pxlab/pxlab.module';
 import { ConfiguracionService } from './configuracion/configuracion.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ArchivoEntity } from './archivos/archivo.entity';
+import { SysLogger } from './syslog/logger.service';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { ArchivoEntity } from './archivos/archivo.entity';
   providers: [SocketLinkService],
 })
 export class AppModule implements OnModuleInit {
-  private logger: Logger = new Logger(AppModule.name);
+  private logger = new SysLogger(AppModule.name);
   constructor(
     private readonly socketLinkService: SocketLinkService,
     private readonly dataSource: DataSource,

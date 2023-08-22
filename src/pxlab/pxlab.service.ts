@@ -9,13 +9,13 @@ export class PxlabService {
     return new Promise((resolve, reject) => {
       try {
         createClient(
-          'http://192.168.0.100:4005',
+          'http://192.168.0.100:8005', //FIXME: cambiar por configuracion
           { envelopeKey: 'soapenv' },
-          (errorCreateClient, Cliente) => {
+          (errorCreateClient, ClienteSoap) => {
             if (errorCreateClient) {
               return reject(errorCreateClient);
             }
-            Cliente.Muestra(
+            ClienteSoap.Muestra(
               { Datos: stringServicio },
               async (errorMetodo, response) => {
                 if (errorMetodo) {
