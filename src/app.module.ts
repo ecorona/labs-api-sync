@@ -10,6 +10,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SyslogEntity } from './syslog/syslog.entity';
 import { DataSource } from 'typeorm';
 import { PxlabModule } from './pxlab/pxlab.module';
+import { ConfiguracionService } from './configuracion/configuracion.service';
 
 @Module({
   imports: [
@@ -35,10 +36,16 @@ export class AppModule implements OnModuleInit {
     private readonly socketLinkService: SocketLinkService,
     private readonly estudiosPdfService: EstudiosPdfService,
     private readonly dataSource: DataSource,
+    private readonly configuracionService: ConfiguracionService,
   ) {}
   onModuleInit() {
     this.socketLinkService.setToken('d8d9941c-f4b9-47e8-b17b-4920dd68ea91');
     this.estudiosPdfService.monitorearCarpeta(this.CARPETA_ESTUDIOS);
+
+    //obtener la configuracion actual
+    this.configuracionService.getConfig().then((config) => {
+      this.logger.verbose('Configuración actual', config);
+    });
 
     //guardar en el log que ya se inició.
     this.dataSource

@@ -1,6 +1,0 @@
-{
-  "hostMonitor": "http://localhost:3005",
-  "hostGateway": "https://api-xquenda-testing.xst.mx",
-  "apiKey": "d8d9941c-f4b9-47e8-b17b-4920dd68ea91",
-  "monitorPdfPath": "/home/developer/pdf"
-}

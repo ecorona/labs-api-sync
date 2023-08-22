@@ -81,7 +81,10 @@
   },
   "pkg": {
     "scripts": "dist/**/*.js",
-    "assets": "dist/www/**/*",
+    "assets": [
+      "dist/www/**/*",
+      "./node_modules/axios/dist/node/axios.cjs"
+    ],
     "targets": [
       "node18-linux-x64",
       "node18-win-x64"
