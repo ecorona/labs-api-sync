@@ -4,12 +4,16 @@ import * as chokidar from 'chokidar';
 import { readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { EventsGateway } from 'src/gateway/events/events.gateway';
 import { SyslogEntity } from 'src/syslog/syslog.entity';
+import { OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
+import { createHash } from 'crypto';
+import { ArchivoEntity } from 'src/archivos/archivo.entity';
 @Injectable()
 export class EstudiosPdfService {
   logger: Logger = new Logger(EstudiosPdfService.name);
   watcher: chokidar.FSWatcher;
-  private apiServer = 'https://api-xquenda-testing.xst.mx';
+  private apiServer = 'http://192.168.0.18:3000'; //FIXME: configurable
+  private readonly CARPETA_ESTUDIOS = '/home/developer/pdf'; //FIXME: configurable
 
   constructor(
     private readonly httpService: HttpService,
@@ -22,7 +26,9 @@ export class EstudiosPdfService {
    * usar chokidar
    * @param carpeta ruta a monitorear
    */
-  monitorearCarpeta(carpeta: string) {
+  @OnEvent('encender-monitor.archivos')
+  monitorearCarpeta() {
+    const carpeta = this.CARPETA_ESTUDIOS;
     if (!this.watcher) {
       this.logger.verbose('Monitoreando carpeta: ' + carpeta);
 
@@ -41,7 +47,7 @@ export class EstudiosPdfService {
           fecha: new Date(),
           message: 'Archivo detectado: ' + path,
         });
-        this.enviarArchivo(path);
+        await this.enviarArchivo(path);
       });
       // this.watcher.on('change', (path) => {
       //   this.logger.verbose('Archivo modificado: ' + path);
@@ -53,6 +59,8 @@ export class EstudiosPdfService {
     }
   }
 
+  //cancelar el monitoreo de la carpeta
+  @OnEvent('apagar-monitor.archivos')
   cancelarMonitor() {
     if (this.watcher) {
       this.watcher.close();
@@ -60,13 +68,21 @@ export class EstudiosPdfService {
     }
   }
 
-  enviarArchivo(path: string) {
+  async enviarArchivo(path: string) {
     //si ya tenemos token, el socket está conectado
     const formData = new FormData();
     //enviar archivo al server, como un post
 
+    const content = readFileSync(path);
+    const hash = this.obtenerHash(content);
+    if (await this.previamenteProcesado(hash, path.split('/').pop())) {
+      this.logger.verbose('Archivo previamente procesado: ' + path);
+      //borrar el archivo previamente procesado.
+      this.deleteFile(path);
+      return;
+    }
     //leer el contenido del archivo como blob
-    const blob = new Blob([readFileSync(path)], {
+    const blob = new Blob([content], {
       type: 'application/pdf',
     });
 
@@ -75,23 +91,21 @@ export class EstudiosPdfService {
     this.httpService
       .post(this.apiServer + '/api/v1/pxlab/pdf', formData, {
         headers: {
-          'api-key': 'd8d9941c-f4b9-47e8-b17b-4920dd68ea91',
+          'api-key': 'd8d9941c-f4b9-47e8-b17b-4920dd68ea91', //FIXME: configurable
         },
       })
       .subscribe({
         next: async () => {
-          this.logger.verbose('Archivo enviado:', path);
+          this.logger.verbose('Archivo enviado: ' + path);
+          //marcar este archivo como procesado
+          this.agregarHash(hash, path.split('/').pop());
           //emitir por EventsGateway que el archivo se ha enviado
           this.eventsGateway.server
             .to('monitor-local')
             .emit('archivo-enviado', path);
+
           //borrar el archivo enviado.
-          unlinkSync(path);
-          this.logger.verbose('Archivo borrado: ' + path);
-          //emitir por EventsGateway que el archivo se ha borrado
-          this.eventsGateway.server
-            .to('monitor-local')
-            .emit('archivo-borrado', path);
+          this.deleteFile(path);
 
           //agregar a syslog
           await this.dataSource.getRepository(SyslogEntity).save({
@@ -105,13 +119,17 @@ export class EstudiosPdfService {
             fecha: new Date(),
             message: 'Error enviando archivo : ' + path,
           });
-          //guardar este error en un json con el mismo nombre que el archivo
-          const nombreArchivo = path.split('/').pop();
-          const sinExtension = nombreArchivo.split('.').shift();
-          const nuevoArchivo = sinExtension + '.json';
-          const contenido = JSON.stringify(error);
-          //grabar el archivo
-          writeFileSync(nuevoArchivo, contenido);
+          try {
+            //guardar este error en un json con el mismo nombre que el archivo
+            const nombreArchivo = path.split('/').pop();
+            const sinExtension = nombreArchivo.split('.').shift();
+            const nuevoArchivo = sinExtension + '.json';
+            const contenido = JSON.stringify(error);
+            //grabar el archivo
+            writeFileSync(nuevoArchivo, contenido);
+          } catch (error) {
+            this.logger.warn('Error grabando archivo de log: ', error);
+          }
 
           if (error.response) {
             // get response with a status code not in range 2xx
@@ -128,5 +146,41 @@ export class EstudiosPdfService {
           this.logger.verbose(error.config);
         },
       });
+  }
+
+  //obtener el hash de un archivo pdf para saber si ya lo procesamos previamente
+  obtenerHash(content: Buffer): string {
+    return createHash('sha256').update(content).digest('hex');
+  }
+
+  //buscar en ArchivoEntity si ya existe el hash y nombre
+  async previamenteProcesado(
+    hash: string,
+    nombre: string,
+  ): Promise<ArchivoEntity> {
+    return this.dataSource
+      .getRepository(ArchivoEntity)
+      .findOne({ where: { hash, nombre } });
+  }
+
+  async agregarHash(hash: string, filename: string): Promise<ArchivoEntity> {
+    return this.dataSource.getRepository(ArchivoEntity).save({
+      hash,
+      nombre: filename,
+    });
+  }
+
+  deleteFile(path: string) {
+    try {
+      //borrar el archivo enviado.
+      unlinkSync(path);
+      this.logger.verbose('Archivo borrado: ' + path);
+      //emitir por EventsGateway que el archivo se ha borrado
+      this.eventsGateway.server
+        .to('monitor-local')
+        .emit('archivo-borrado', path);
+    } catch (error) {
+      this.logger.warn('No se pudo borrar un pdf procesado: ' + path);
+    }
   }
 }

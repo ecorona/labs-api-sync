@@ -7,6 +7,7 @@ import { DataSource } from 'typeorm';
 import { SyslogEntity } from 'src/syslog/syslog.entity';
 import { TareaData } from './tarea-data.dto';
 import { PxlabService } from 'src/pxlab/pxlab.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class SocketLinkService {
@@ -26,6 +27,13 @@ export class SocketLinkService {
   private _conectando: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(
     true,
   );
+
+  constructor(
+    private readonly eventsGateway: EventsGateway,
+    private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly pxlabService: PxlabService,
+  ) {}
 
   get data$(): Observable<ClientData> {
     return this.data.asObservable();
@@ -63,12 +71,6 @@ export class SocketLinkService {
     },
   });
 
-  constructor(
-    private readonly eventsGateway: EventsGateway,
-    private readonly dataSource: DataSource,
-    private readonly pxlabService: PxlabService,
-  ) {}
-
   //establecer el token de autorización para conectarse al socket del api server
   //y conectarse al socket
   setToken(token: string): void {
@@ -89,6 +91,9 @@ export class SocketLinkService {
         fecha: new Date(),
         message: 'Conectado al servidor',
       });
+
+      //avisar por evento desacoplado al service de estudios-pdf que debe encender el watch
+      this.eventEmitter.emit('encender-monitor.archivos');
     });
     this.socket.on('disconnect', async () => {
       this.conectado = false;
@@ -97,6 +102,10 @@ export class SocketLinkService {
         fecha: new Date(),
         message: 'Desconectado del servidor',
       });
+
+      //avisar por evento desacoplado al service de estudios-pdf que debe apagar el watch ya que
+      //no hay conexión con el servidor
+      this.eventEmitter.emit('apagar-monitor.archivos');
     });
     this.socket.on('reconnecting', () => {
       this.conectando = true;
@@ -111,6 +120,8 @@ export class SocketLinkService {
     //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     //                            Eventos de la aplicación
     //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    // LEV:2
     this.socket.on('nuevaVenta', async (tarea: TareaData) => {
       this.logger.verbose(
         'SocketLinkService->nuevaVenta > tarea:',
@@ -136,14 +147,19 @@ export class SocketLinkService {
           dev: true,
         };
 
+        // LEV:3.1 (demo)
+        this.sendRequest('pxlab.responseVenta', respuesta);
+
         this.logger.verbose('Modo demo:' + responseSoapTest.MuestraResult);
 
         // self.ocupadoEnTarea = false;
         return respuesta;
       }
 
+      // LEV:2.5
       // const responseSoap = await this.pxlabService.enviarServicios(tarea.data);
       // this.logger.verbose('response enviarServicios', responseSoap);
+      // LEV:3
       // if (
       //   responseSoap &&
       //   responseSoap.MuestraResult &&
@@ -205,11 +221,17 @@ export class SocketLinkService {
 
   //enviar una solicitud al api
   sendRequest(event: string, data: string | object = '', cb = null): void {
-    this.socket.emit(event, data, (response) => {
-      if (typeof cb === 'function') {
-        return cb(response);
-      }
-    });
+    this.socket.emit(
+      event,
+      {
+        data,
+      },
+      (response) => {
+        if (typeof cb === 'function') {
+          return cb(response);
+        }
+      },
+    );
   }
 
   //solicitarle al api, que me de los canales a los que me puedo unir
