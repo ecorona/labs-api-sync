@@ -1,16 +1,20 @@
 import { HttpService } from '@nestjs/axios';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as chokidar from 'chokidar';
-import { readFileSync, unlinkSync } from 'fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { EventsGateway } from 'src/gateway/events/events.gateway';
+import { SyslogEntity } from 'src/syslog/syslog.entity';
+import { DataSource } from 'typeorm';
 @Injectable()
 export class EstudiosPdfService {
+  logger: Logger = new Logger(EstudiosPdfService.name);
   watcher: chokidar.FSWatcher;
   private apiServer = 'https://api-xquenda-testing.xst.mx';
 
   constructor(
     private readonly httpService: HttpService,
     private readonly eventsGateway: EventsGateway,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -20,7 +24,7 @@ export class EstudiosPdfService {
    */
   monitorearCarpeta(carpeta: string) {
     if (!this.watcher) {
-      console.log('Monitoreando carpeta: ' + carpeta);
+      this.logger.verbose('Monitoreando carpeta: ' + carpeta);
 
       // Initialize watcher.
       this.watcher = chokidar.watch(carpeta, {
@@ -30,17 +34,22 @@ export class EstudiosPdfService {
       });
 
       // Add event listeners.
-      this.watcher.on('add', (path) => {
-        console.log('Archivo agregado: ' + path);
+      this.watcher.on('add', async (path) => {
+        this.logger.verbose('Archivo detectado: ' + path);
+        //agregar a syslog
+        await this.dataSource.getRepository(SyslogEntity).save({
+          fecha: new Date(),
+          message: 'Archivo detectado: ' + path,
+        });
         this.enviarArchivo(path);
       });
       // this.watcher.on('change', (path) => {
-      //   console.log('Archivo modificado: ' + path);
+      //   this.logger.verbose('Archivo modificado: ' + path);
       //   this.enviarArchivo(path);
       // });
     } else {
-      console.log('Ya se está monitoreando una carpeta');
-      console.log('Carpeta actual: ' + this.watcher.getWatched());
+      this.logger.verbose('Ya se está monitoreando una carpeta');
+      this.logger.verbose('Carpeta actual: ' + this.watcher.getWatched());
     }
   }
 
@@ -70,34 +79,53 @@ export class EstudiosPdfService {
         },
       })
       .subscribe({
-        next: () => {
-          console.log('Archivo enviado:', path);
+        next: async () => {
+          this.logger.verbose('Archivo enviado:', path);
           //emitir por EventsGateway que el archivo se ha enviado
           this.eventsGateway.server
             .to('monitor-local')
             .emit('archivo-enviado', path);
           //borrar el archivo enviado.
           unlinkSync(path);
-          console.log('Archivo borrado: ' + path);
+          this.logger.verbose('Archivo borrado: ' + path);
           //emitir por EventsGateway que el archivo se ha borrado
           this.eventsGateway.server
             .to('monitor-local')
             .emit('archivo-borrado', path);
+
+          //agregar a syslog
+          await this.dataSource.getRepository(SyslogEntity).save({
+            fecha: new Date(),
+            message: 'Archivo enviado: ' + path,
+          });
         },
-        error: (error) => {
+        error: async (error) => {
+          //agregar a syslog
+          await this.dataSource.getRepository(SyslogEntity).save({
+            fecha: new Date(),
+            message: 'Error enviando archivo : ' + path,
+          });
+          //guardar este error en un json con el mismo nombre que el archivo
+          const nombreArchivo = path.split('/').pop();
+          const sinExtension = nombreArchivo.split('.').shift();
+          const nuevoArchivo = sinExtension + '.json';
+          const contenido = JSON.stringify(error);
+          //grabar el archivo
+          writeFileSync(nuevoArchivo, contenido);
+
           if (error.response) {
             // get response with a status code not in range 2xx
-            console.log(error.response.data);
-            console.log(error.response.status);
-            console.log(error.response.headers);
+            this.logger.verbose(error.response.data);
+            this.logger.verbose(error.response.status);
+            this.logger.verbose(error.response.headers);
           } else if (error.request) {
             // no response
-            console.log(error.request);
+            this.logger.verbose(error.request);
           } else {
             // Something wrong in setting up the request
-            console.log('Error', error.message);
+            this.logger.verbose('Error', error.message);
           }
-          console.log(error.config);
+          this.logger.verbose(error.config);
         },
       });
   }
