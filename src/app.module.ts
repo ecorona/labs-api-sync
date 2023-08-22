@@ -7,7 +7,6 @@ import { ConfiguracionModule } from './configuracion/configuracion.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SyslogEntity } from './syslog/syslog.entity';
-import { DataSource } from 'typeorm';
 import { PxlabModule } from './pxlab/pxlab.module';
 import { ConfiguracionService } from './configuracion/configuracion.service';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -19,8 +18,9 @@ import { SysLogger } from './syslog/logger.service';
     HttpModule,
     EventEmitterModule.forRoot(),
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'monitor.sqlite',
+      type: 'sqljs',
+      location: 'monitor.db',
+      autoSave: true,
       entities: [SyslogEntity, ArchivoEntity],
       synchronize: true,
     }),
@@ -36,29 +36,26 @@ export class AppModule implements OnModuleInit {
   private logger = new SysLogger(AppModule.name);
   constructor(
     private readonly socketLinkService: SocketLinkService,
-    private readonly dataSource: DataSource,
     private readonly configuracionService: ConfiguracionService,
   ) {}
   onModuleInit() {
-    this.socketLinkService.setToken('d8d9941c-f4b9-47e8-b17b-4920dd68ea91');
+    //obtener el token de la configuracion
+    const token = this.configuracionService.getValue('apiKey');
+    if (token) {
+      this.socketLinkService.setToken(token);
+    } else {
+      this.logger.warn(
+        '*    ¡¡¡ No se ha configurado un api key para este monitor, no se podrá conectar al servidor remoto.!!!',
+      );
+      this.logger.warn(
+        '*    ' +
+          __dirname +
+          'configuracion.json                                    *',
+      );
+    }
 
     //obtener la configuracion actual
-    this.configuracionService.getConfig().then((config) => {
-      this.logger.verbose('Configuración actual', config);
-    });
-
-    //guardar en el log que ya se inició.
-    this.dataSource
-      .getRepository(SyslogEntity)
-      .save({
-        fecha: new Date(),
-        message: 'Servicio iniciado',
-      })
-      .then(() => {
-        this.logger.verbose('Servicio iniciado');
-      })
-      .catch((err) => {
-        this.logger.error('Error al guardar syslog', err);
-      });
+    const config = this.configuracionService.getConfig();
+    this.logger.verbose('Configuración actual: ', config);
   }
 }

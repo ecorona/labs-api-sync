@@ -36,7 +36,7 @@
     "rxjs": "^7.8.1",
     "soap": "^1.0.0",
     "socket.io-client": "^4.4.1",
-    "sqlite3": "^5.1.6",
+    "sql.js": "^1.8.0",
     "typeorm": "^0.3.17"
   },
   "devDependencies": {
@@ -83,11 +83,10 @@
   "pkg": {
     "scripts": "dist/**/*.js",
     "assets": [
-      "dist/www/**/*",
-      "./node_modules/axios/dist/node/axios.cjs"
+      "./node_modules/axios/dist/node/axios.cjs",
+      "./node_modules/sql.js/dist/sql-wasm.wasm"
     ],
     "targets": [
-      "node18-linux-x64",
       "node18-win-x64"
     ],
     "outputPath": "deploy"

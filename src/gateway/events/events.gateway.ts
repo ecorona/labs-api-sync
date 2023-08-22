@@ -54,18 +54,19 @@ export class EventsGateway
   }
 
   @SubscribeMessage('get-config')
-  getConfig(): Promise<ConfigValues> {
+  getConfig(): ConfigValues {
     return this.configuracionService.getConfig();
   }
 
   @SubscribeMessage('set-config')
   setConfig(client: Socket, payload: any): Promise<ConfigValues> {
     console.log('payload', payload);
-    return this.configuracionService.getConfig();
+    return this.configuracionService.setConfig(payload);
   }
 
   @OnEvent('syslog')
   syslog(payload: any) {
+    console.log('...', payload);
     this.logger.log('syslog', payload);
     this.server.to('monitor-local').emit('syslog', payload);
   }

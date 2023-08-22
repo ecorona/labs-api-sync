@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 
 @Injectable()
 export class ConfiguracionService {
-  async getConfig(): Promise<ConfigValues> {
+  getConfig(): ConfigValues {
     //si el archivo no existe
     if (!existsSync('configuracion.json')) {
       //crear el archivo
@@ -12,10 +12,10 @@ export class ConfiguracionService {
         'configuracion.json',
         JSON.stringify({
           hostMonitor: 'http://localhost:3005',
-          pxLabHost: 'http://localhost:3000',
-          hostGateway: 'https://api-xquenda-testing.xst.mx',
-          apiKey: 'd8d9941c-f4b9-47e8-b17b-4920dd68ea91',
-          monitorPdfPath: '/home/developer/pdf',
+          pxLabHost: 'http://localhost:8005/WSPxLab.asmx?WSDL',
+          hostGateway: 'https://plataforma.laboratoriosanfrancisco.mx',
+          apiKey: '',
+          monitorPdfPath: 'C:\\Xystems\\ResultadosPDF\\',
         }),
       );
     }
@@ -33,5 +33,9 @@ export class ConfiguracionService {
     //escribir en el archivo el json
     writeFileSync('configuracion.json', JSON.stringify(config));
     return config;
+  }
+
+  getValue(key: string): string {
+    return this.getConfig()?.[key] || null;
   }
 }

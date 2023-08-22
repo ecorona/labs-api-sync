@@ -9,13 +9,19 @@ import { TareaData } from './tarea-data.dto';
 import { PxlabService } from 'src/pxlab/pxlab.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SysLogger } from 'src/syslog/logger.service';
+import { LastUserCheck } from './dto/last-user-check.dto';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 
 @Injectable()
 export class SocketLinkService {
   private logger = new SysLogger(SocketLinkService.name);
-  //FIXME: obtener de configuracion json, este es el api de la plataforma
+  //obtener de configuracion json, este es el api de la plataforma
   //vamos a ser clientes para recibir eventos de la plataforma
-  private apiServer = 'http://192.168.0.18:3000';
+  private apiServer = ''; //configurable
+  private apikey = ''; //configurable
+
+  private lastUserCheck: BehaviorSubject<LastUserCheck> =
+    new BehaviorSubject<LastUserCheck>(null);
 
   isProd = false;
   private data = new BehaviorSubject<ClientData>(null);
@@ -34,7 +40,11 @@ export class SocketLinkService {
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
     private readonly pxlabService: PxlabService,
-  ) {}
+    private readonly configuracionService: ConfiguracionService,
+  ) {
+    this.apiServer = this.configuracionService.getValue('hostMonitor');
+    this.apikey = this.configuracionService.getValue('apiKey');
+  }
 
   get data$(): Observable<ClientData> {
     return this.data.asObservable();
@@ -61,6 +71,7 @@ export class SocketLinkService {
 
   //socket del cliente
   private socket = io(this.apiServer, {
+    //plataforma
     transports: ['websocket'],
     autoConnect: false,
     reconnection: true,
@@ -124,94 +135,19 @@ export class SocketLinkService {
 
     // LEV:2
     this.socket.on('nuevaVenta', async (tarea: TareaData) => {
-      this.logger.verbose(
-        'SocketLinkService->nuevaVenta > tarea:',
-        tarea.data.substring(0, 85) + '...',
-      );
-
-      this.events.next({ event: 'nuevaVenta', data: tarea });
-      await this.dataSource.getRepository(SyslogEntity).save({
-        fecha: new Date(),
-        message: 'Recibida nueva venta del servidor: ' + tarea.data,
-      });
-
-      if (!this.isProd) {
-        const folioPx = (Math.random() * 10000000000).toFixed(0).substr(0, 8);
-        const responseSoapTest = {
-          MuestraResult: '1|' + folioPx,
-        };
-        const idVenta = parseInt(tarea.data.split('|')[0].trim());
-        const respuesta = {
-          idVenta,
-          response: responseSoapTest,
-          tareaId: tarea.id,
-          dev: true,
-        };
-
-        // LEV:3.1 (demo)
-        this.sendRequest('pxlab.responseVenta', respuesta);
-
-        this.logger.verbose('Modo demo:' + responseSoapTest.MuestraResult);
-
-        // self.ocupadoEnTarea = false;
-        return respuesta;
-      }
-
-      // LEV:2.5
-      // const responseSoap = await this.pxlabService.enviarServicios(tarea.data);
-      // this.logger.verbose('response enviarServicios', responseSoap);
-      // LEV:3
-      // if (
-      //   responseSoap &&
-      //   responseSoap.MuestraResult &&
-      //   responseSoap.MuestraResult.split('|')[0] === '1'
-      // ) {
-      //   await this.dataSource.getRepository(SyslogEntity).save({
-      //     fecha: new Date(),
-      //     message:
-      //       'NuevaVenta->response: ' + responseSoap.MuestraResult.split('|')[1],
-      //   });
-      //   // decirle a nuestro software que ya quedó
-      //   const idVenta = parseInt(tarea.data.split('|')[0].trim());
-      //   const respuesta = {
-      //     idVenta,
-      //     response: responseSoap,
-      //     tareaId: tarea.id,
-      //   };
-      //   // lanzar la respuesta por socket a el server, avisando de esta venta y
-      //   // su nuevo foliopx, y la tarea, ya esta finalizada
-      //   // LEV:3.1
-      //   this.sendRequest('pxlab.responseVenta', respuesta);
-      //   // va a dar al back->events.gateway->folioPXListo(respuesta)
-
-      //   // self.ocupadoEnTarea = false;
-      //   return respuesta;
-      // } else {
-      //   const error = responseSoap.MuestraResult.split('|')[1];
-      //   // LEV:3.5
-      //   this.sendRequest('pxlab.tareaErronea', {
-      //     result: responseSoap.MuestraResult || responseSoap,
-      //     tareaId: tarea.id,
-      //   });
-      //   // self.log('ERROR EN PX, Verificar estudios: ', error, '', 'error');
-      //   await this.dataSource.getRepository(SyslogEntity).save({
-      //     fecha: new Date(),
-      //     message: (
-      //       'NuevaVenta->error al enviar a px: ' + JSON.stringify(error)
-      //     ).substring(0, 255),
-      //   });
-      //   this.sendRequest('monitor.pxError', {
-      //     pxError: error,
-      //     tareaId: tarea.id,
-      //   });
-      //   // self.ocupadoEnTarea = false;
-      // return responseSoap.MuestraResult;
-      // }
+      await this.handleNuevaVenta(tarea);
     });
 
     this.socket.on('horaServer', (hora) => {
-      //emitir por el gateway local
       this.eventsGateway.server.to('monitor-local').emit('horaServer', hora);
+    });
+
+    this.socket.on('nuevoQr', async (qr) => {
+      await this.handleNuevoQr(qr);
+    });
+
+    this.socket.on('quemandoQr', async (qr) => {
+      await this.handleQuemando(qr);
     });
   }
 
@@ -268,5 +204,133 @@ export class SocketLinkService {
     this.logger.verbose('SocketLinkService->disconnect > ', this.apiServer);
     this.socket.disconnect();
     this.offEvents();
+  }
+
+  async handleNuevaVenta(tarea: TareaData) {
+    this.logger.verbose(
+      'SocketLinkService->nuevaVenta > tarea:',
+      tarea.data.substring(0, 85) + '...',
+    );
+
+    this.events.next({ event: 'nuevaVenta', data: tarea });
+    await this.dataSource.getRepository(SyslogEntity).save({
+      fecha: new Date(),
+      message: 'Recibida nueva venta del servidor: ' + tarea.data,
+    });
+
+    if (!this.isProd) {
+      const folioPx = (Math.random() * 10000000000).toFixed(0).substr(0, 8);
+      const responseSoapTest = {
+        MuestraResult: '1|' + folioPx,
+      };
+      const idVenta = parseInt(tarea.data.split('|')[0].trim());
+      const respuesta = {
+        idVenta,
+        response: responseSoapTest,
+        tareaId: tarea.id,
+        dev: true,
+      };
+
+      // LEV:3.1 (demo)
+      this.sendRequest('pxlab.responseVenta', respuesta);
+
+      this.logger.verbose('Modo demo:' + responseSoapTest.MuestraResult);
+
+      // self.ocupadoEnTarea = false;
+      return respuesta;
+    }
+
+    LEV: 2.5;
+    const responseSoap = await this.pxlabService.enviarServicios(tarea.data);
+    this.logger.verbose('response enviarServicios', responseSoap);
+    LEV: 3;
+    if (
+      responseSoap &&
+      responseSoap.MuestraResult &&
+      responseSoap.MuestraResult.split('|')[0] === '1'
+    ) {
+      await this.dataSource.getRepository(SyslogEntity).save({
+        fecha: new Date(),
+        message:
+          'NuevaVenta->response: ' + responseSoap.MuestraResult.split('|')[1],
+      });
+      // decirle a nuestro software que ya quedó
+      const idVenta = parseInt(tarea.data.split('|')[0].trim());
+      const respuesta = {
+        idVenta,
+        response: responseSoap,
+        tareaId: tarea.id,
+      };
+      // lanzar la respuesta por socket a el server, avisando de esta venta y
+      // su nuevo foliopx, y la tarea, ya esta finalizada
+      // LEV:3.1
+      this.sendRequest('pxlab.responseVenta', respuesta);
+      // va a dar al back->events.gateway->folioPXListo(respuesta)
+
+      // self.ocupadoEnTarea = false;
+      return respuesta;
+    } else {
+      const error = responseSoap.MuestraResult.split('|')[1];
+      // LEV:3.5
+      this.sendRequest('pxlab.tareaErronea', {
+        result: responseSoap.MuestraResult || responseSoap,
+        tareaId: tarea.id,
+      });
+      // self.log('ERROR EN PX, Verificar estudios: ', error, '', 'error');
+      await this.dataSource.getRepository(SyslogEntity).save({
+        fecha: new Date(),
+        message: (
+          'NuevaVenta->error al enviar a px: ' + JSON.stringify(error)
+        ).substring(0, 255),
+      });
+      this.sendRequest('monitor.pxError', {
+        pxError: error,
+        tareaId: tarea.id,
+      });
+      // self.ocupadoEnTarea = false;
+      return responseSoap.MuestraResult;
+    }
+  }
+
+  //manejar el nuevo qr, meterlo a data, mostrar el usuario escaneado.
+  handleNuevoQr(response) {
+    console.log('handleNuevoQr', response);
+    // const data = this.data.getValue();
+    // data.qr = response.codigoNuevo.uuid;
+    // this.data.next(data);
+
+    // //montar el lastUserCheck en el subject
+    // const lastUserCheck: LastUserCheck = {
+    //   lastUser: response.usuarioQuema,
+    //   lastUserCheck: response.resultQuemar.fechaHora,
+    //   escaneando: false,
+    // };
+
+    // this.lastUserCheck.next(lastUserCheck);
+  }
+
+  handleQuemando(qr: {
+    contrato: {
+      empleado: {
+        nombreCompleto: string;
+      };
+      puesto: {
+        nombre: string;
+        departamento: {
+          nombre: string;
+        };
+      };
+    };
+  }) {
+    console.log('handleQuemando', qr);
+    // const data = this.data.getValue();
+
+    // //montar el lastUserCheck en el subject
+    // const lastUserCheck: LastUserCheck = {
+    //   lastUser: qr.usuarioQuema,
+    //   lastUserCheck: qr.resultQuemar.fechaHora,
+    //   escaneando: false,
+    // };
+    // this.lastUserCheck.next(lastUserCheck);
   }
 }

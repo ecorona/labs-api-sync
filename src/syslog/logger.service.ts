@@ -1,8 +1,11 @@
-import { ConsoleLogger } from '@nestjs/common';
+import { ConsoleLogger, Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
+@Injectable()
 export class SysLogger extends ConsoleLogger {
   private consoleLogger: ConsoleLogger;
+
+  @Inject(EventEmitter2)
   private eventEmitter: EventEmitter2;
 
   constructor(name: string) {

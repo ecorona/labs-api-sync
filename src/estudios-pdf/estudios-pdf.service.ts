@@ -9,18 +9,26 @@ import { DataSource } from 'typeorm';
 import { createHash } from 'crypto';
 import { ArchivoEntity } from 'src/archivos/archivo.entity';
 import { SysLogger } from 'src/syslog/logger.service';
+import { ConfiguracionService } from 'src/configuracion/configuracion.service';
 @Injectable()
 export class EstudiosPdfService {
   logger = new SysLogger(EstudiosPdfService.name);
   watcher: chokidar.FSWatcher;
-  private apiServer = 'http://192.168.0.18:3000'; //FIXME: configurable
-  private readonly CARPETA_ESTUDIOS = '/home/developer/pdf'; //FIXME: configurable
+  private apiServer = ''; //configurable
+  private CARPETA_ESTUDIOS = ''; //configurable
+  private apikey = ''; // configurable
 
   constructor(
     private readonly httpService: HttpService,
     private readonly eventsGateway: EventsGateway,
     private readonly dataSource: DataSource,
-  ) {}
+    private readonly configuracionService: ConfiguracionService,
+  ) {
+    this.apiServer = this.configuracionService.getValue('hostMonitor');
+    this.CARPETA_ESTUDIOS =
+      this.configuracionService.getValue('monitorPdfPath');
+    this.apikey = this.configuracionService.getValue('apiKey');
+  }
 
   /**
    * Monitorea una carpeta en busca de archivos PDF nuevos o modificados
@@ -70,10 +78,6 @@ export class EstudiosPdfService {
   }
 
   async enviarArchivo(path: string) {
-    //si ya tenemos token, el socket está conectado
-    const formData = new FormData();
-    //enviar archivo al server, como un post
-
     const content = readFileSync(path);
     const hash = this.obtenerHash(content);
     if (await this.previamenteProcesado(hash, path.split('/').pop())) {
@@ -82,17 +86,19 @@ export class EstudiosPdfService {
       this.deleteFile(path);
       return;
     }
+    //enviar archivo al server, como un post
     //leer el contenido del archivo como blob
     const blob = new Blob([content], {
       type: 'application/pdf',
     });
 
+    const formData = new FormData();
     formData.append('archivo', blob, path);
 
     this.httpService
       .post(this.apiServer + '/api/v1/pxlab/pdf', formData, {
         headers: {
-          'api-key': 'd8d9941c-f4b9-47e8-b17b-4920dd68ea91', //FIXME: configurable
+          'api-key': this.apikey, //configurable
         },
       })
       .subscribe({
