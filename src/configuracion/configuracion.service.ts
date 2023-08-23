@@ -10,13 +10,17 @@ export class ConfiguracionService {
       //crear el archivo
       writeFileSync(
         'configuracion.json',
-        JSON.stringify({
-          hostMonitor: 'http://localhost:3005',
-          pxLabHost: 'http://localhost:8005/WSPxLab.asmx?WSDL',
-          hostGateway: 'https://plataforma.laboratoriosanfrancisco.mx',
-          apiKey: '',
-          monitorPdfPath: 'C:\\Xystems\\ResultadosPDF\\',
-        }),
+        JSON.stringify(
+          {
+            hostMonitor: 'http://localhost:3005',
+            pxLabHost: 'http://localhost:8005/WSPxLab.asmx?WSDL',
+            apiServer: 'https://api-xquenda-testing.xst.mx',
+            apiKey: '',
+            monitorPdfPath: 'C:\\Xystems\\ResultadosPDF\\',
+          },
+          null,
+          2,
+        ),
       );
     }
     //leer el archivo configuracion.json

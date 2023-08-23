@@ -42,7 +42,7 @@ export class SocketLinkService {
     private readonly pxlabService: PxlabService,
     private readonly configuracionService: ConfiguracionService,
   ) {
-    this.apiServer = this.configuracionService.getValue('hostMonitor');
+    this.apiServer = this.configuracionService.getValue('apiServer');
     this.apikey = this.configuracionService.getValue('apiKey');
   }
 

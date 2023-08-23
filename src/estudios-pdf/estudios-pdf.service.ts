@@ -24,7 +24,7 @@ export class EstudiosPdfService {
     private readonly dataSource: DataSource,
     private readonly configuracionService: ConfiguracionService,
   ) {
-    this.apiServer = this.configuracionService.getValue('hostMonitor');
+    this.apiServer = this.configuracionService.getValue('apiServer');
     this.CARPETA_ESTUDIOS =
       this.configuracionService.getValue('monitorPdfPath');
     this.apikey = this.configuracionService.getValue('apiKey');
