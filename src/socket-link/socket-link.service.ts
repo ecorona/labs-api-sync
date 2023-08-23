@@ -1,4 +1,4 @@
-import { io } from 'socket.io-client';
+import { Socket, io } from 'socket.io-client';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { Injectable } from '@nestjs/common';
 import { ClientData } from './client-data.dto';
@@ -9,8 +9,8 @@ import { TareaData } from './tarea-data.dto';
 import { PxlabService } from 'src/pxlab/pxlab.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SysLogger } from 'src/syslog/logger.service';
-import { LastUserCheck } from './dto/last-user-check.dto';
 import { ConfiguracionService } from 'src/configuracion/configuracion.service';
+import { HandleNuevoQrData } from './dto/models';
 
 @Injectable()
 export class SocketLinkService {
@@ -20,12 +20,13 @@ export class SocketLinkService {
   private apiServer = ''; //configurable
   private apikey = ''; //configurable
 
-  private lastUserCheck: BehaviorSubject<LastUserCheck> =
-    new BehaviorSubject<LastUserCheck>(null);
+  private lastUserCheck: BehaviorSubject<HandleNuevoQrData> =
+    new BehaviorSubject<HandleNuevoQrData>(null);
 
   isProd = false;
   private data = new BehaviorSubject<ClientData>(null);
-
+  //socket del cliente
+  private socket: Socket;
   // eventos personalizados
   public events = new Subject<{ event: string; data?: any }>();
   private _conectado: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(
@@ -44,6 +45,18 @@ export class SocketLinkService {
   ) {
     this.apiServer = this.configuracionService.getValue('apiServer');
     this.apikey = this.configuracionService.getValue('apiKey');
+    this.socket = io(this.apiServer, {
+      //plataforma
+      transports: ['websocket'],
+      autoConnect: false,
+      reconnection: true,
+      withCredentials: true,
+      auth: {
+        token: '',
+        mode: 'monitor',
+        scope: 'nuevo-monitor',
+      },
+    });
   }
 
   get data$(): Observable<ClientData> {
@@ -68,20 +81,6 @@ export class SocketLinkService {
   set conectado(val: boolean) {
     this._conectado.next(val);
   }
-
-  //socket del cliente
-  private socket = io(this.apiServer, {
-    //plataforma
-    transports: ['websocket'],
-    autoConnect: false,
-    reconnection: true,
-    withCredentials: true,
-    auth: {
-      token: '',
-      mode: 'monitor',
-      scope: 'nuevo-monitor',
-    },
-  });
 
   //establecer el token de autorización para conectarse al socket del api server
   //y conectarse al socket
@@ -123,7 +122,15 @@ export class SocketLinkService {
       this.conectando = true;
     });
     this.socket.on('connect_error', (err) => {
-      this.logger.verbose('SocketLinkService->connect_error:', err);
+      this.logger.verbose(
+        'SocketLinkService->connect_error:',
+        this.apiServer,
+        this.apikey,
+        err,
+      );
+    });
+    this.socket.on('error', (err) => {
+      this.logger.verbose('SocketLinkService->error:', err);
     });
     this.socket.on('exception', (err) => {
       this.logger.verbose('SocketLinkService->exception:', err);
@@ -138,6 +145,10 @@ export class SocketLinkService {
       await this.handleNuevaVenta(tarea);
     });
 
+    /**
+     * La hora del servidor nos llega por el cliente, lo pasamos al gateway
+     * para que le llegue a admin
+     */
     this.socket.on('horaServer', (hora) => {
       this.eventsGateway.server.to('monitor-local').emit('horaServer', hora);
     });
@@ -146,9 +157,9 @@ export class SocketLinkService {
       await this.handleNuevoQr(qr);
     });
 
-    this.socket.on('quemandoQr', async (qr) => {
-      await this.handleQuemando(qr);
-    });
+    // this.socket.on('quemandoQr', async (qr) => {
+    //   await this.handleQuemando(qr);
+    // });
   }
 
   //desconectar los eventos
@@ -206,6 +217,15 @@ export class SocketLinkService {
     this.offEvents();
   }
 
+  /**
+   * Cuando se hace una venta nueva, el back nos envía este evento con la tarea
+   * para que se sincronize con pxlab, esta funcion se encarga de pasar la tarea
+   * a pxlab y esperar la respuesta, si es exitosa, se le avisa al back que ya
+   * se sincronizó y se le envía el folio px, si no es exitosa, se le avisa al
+   * back que no se pudo sincronizar y se le envía el error
+   * @param {TareaData} tarea tarea de sincronizacion proveniente del back
+   * @returns folio px
+   */
   async handleNuevaVenta(tarea: TareaData) {
     this.logger.verbose(
       'SocketLinkService->nuevaVenta > tarea:',
@@ -293,44 +313,49 @@ export class SocketLinkService {
   }
 
   //manejar el nuevo qr, meterlo a data, mostrar el usuario escaneado.
-  handleNuevoQr(response) {
-    console.log('handleNuevoQr', response);
-    // const data = this.data.getValue();
-    // data.qr = response.codigoNuevo.uuid;
-    // this.data.next(data);
+  handleNuevoQr(response: HandleNuevoQrData) {
+    this.logger.verbose('handleNuevoQr', response.codigoNuevo.uuid);
+    this.logger.verbose('Colaborador: ', response.usuarioQuema.firstName);
+    this.logger.verbose('Sucursal: ', response.resultQuemar.sucursal.nombre);
+    const data = this.data.getValue();
 
-    // //montar el lastUserCheck en el subject
-    // const lastUserCheck: LastUserCheck = {
-    //   lastUser: response.usuarioQuema,
-    //   lastUserCheck: response.resultQuemar.fechaHora,
-    //   escaneando: false,
-    // };
+    //actualizar el codigoQR con el nuevo que viene
+    if (response?.codigoNuevo?.uuid) {
+      data.qr = response.codigoNuevo.uuid;
+      this.data.next(data);
+    }
 
-    // this.lastUserCheck.next(lastUserCheck);
+    //montar el lastUserCheck en el subject
+    this.lastUserCheck.next(response);
+
+    //pasar al gateway el usuario escaneado
+    this.eventsGateway.server
+      .to('monitor-local')
+      .emit('monitor.nuevoQr', response);
   }
 
-  handleQuemando(qr: {
-    contrato: {
-      empleado: {
-        nombreCompleto: string;
-      };
-      puesto: {
-        nombre: string;
-        departamento: {
-          nombre: string;
-        };
-      };
-    };
-  }) {
-    console.log('handleQuemando', qr);
-    // const data = this.data.getValue();
+  // handleQuemando(qr: {
+  //   contrato: {
+  //     empleado: {
+  //       nombreCompleto: string;
+  //     };
+  //     puesto: {
+  //       nombre: string;
+  //       departamento: {
+  //         nombre: string;
+  //       };
+  //     };
+  //   };
+  // }) {
+  //   console.log('handleQuemando', qr);
+  //   // const data = this.data.getValue();
 
-    // //montar el lastUserCheck en el subject
-    // const lastUserCheck: LastUserCheck = {
-    //   lastUser: qr.usuarioQuema,
-    //   lastUserCheck: qr.resultQuemar.fechaHora,
-    //   escaneando: false,
-    // };
-    // this.lastUserCheck.next(lastUserCheck);
-  }
+  //   // //montar el lastUserCheck en el subject
+  //   // const lastUserCheck: LastUserCheck = {
+  //   //   lastUser: qr.usuarioQuema,
+  //   //   lastUserCheck: qr.resultQuemar.fechaHora,
+  //   //   escaneando: false,
+  //   // };
+  //   // this.lastUserCheck.next(lastUserCheck);
+  // }
 }

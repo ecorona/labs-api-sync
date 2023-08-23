@@ -37,4 +37,9 @@ export class SysLogger extends ConsoleLogger {
     this.eventEmitter.emit('syslog', { level: 'verbose', message });
     this.consoleLogger.verbose(message, ...optionalParams);
   }
+
+  dir(message) {
+    this.eventEmitter.emit('syslog', { level: 'dir', message });
+    console.table(message);
+  }
 }

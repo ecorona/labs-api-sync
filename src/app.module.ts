@@ -39,6 +39,10 @@ export class AppModule implements OnModuleInit {
     private readonly configuracionService: ConfiguracionService,
   ) {}
   onModuleInit() {
+    //obtener la configuracion actual
+    const config = this.configuracionService.getConfig();
+    this.logger.verbose('Configuracion actual:');
+    this.logger.dir(config);
     //obtener el token de la configuracion
     const token = this.configuracionService.getValue('apiKey');
     if (token) {
@@ -53,9 +57,5 @@ export class AppModule implements OnModuleInit {
           'configuracion.json                                    *',
       );
     }
-
-    //obtener la configuracion actual
-    const config = this.configuracionService.getConfig();
-    this.logger.verbose('Configuración actual: ', config);
   }
 }

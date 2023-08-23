@@ -1,19 +1,7 @@
+import { UsuarioQuema } from './models';
+
 export class LastUserCheck {
-  lastUser: {
-    id: number;
-    nombreCompleto: string;
-    contrato: {
-      empleado: {
-        nombreCompleto: string;
-      };
-      puesto: {
-        nombre: string;
-        departamento: {
-          nombre: string;
-        };
-      };
-    };
-  };
+  lastUser: UsuarioQuema;
   lastUserCheck: boolean;
   escaneando: boolean;
 }
